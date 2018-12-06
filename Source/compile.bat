@@ -1,0 +1,1 @@
+nvcc -g main.cu -ccbin "C:\Program Files (x86)\Microsoft Visual Studio 14.0\VC\bin\cl.exe" -o main
