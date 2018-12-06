@@ -8,8 +8,6 @@
 #define L_Matrix_t(col,row) matL[((row)*numRows + (col))]
 #define N 8
 
-
- 
 __global__ void gpu_square_update_kernel_transposed(int* matL, int* vecX, int* vecB, int numRows)
 {
 	int idx = blockIdx.x*blockDim.x + threadIdx.x;
@@ -74,6 +72,43 @@ __global__ void gpu_simple_solver_kernel(int* matL, int* vecX, int* vecB, int nu
 	}
 }
 
+__global__ void gpu_simple_solver_Anjum (int* matL, int* vecX, int* vecB, int numRows)
+{
+    __shared__ int ds_B[N];
+    __shared__ int ds_X[N];
+
+    int idx = blockIdx.x*blockDim.x+threadIdx.x;
+    ds_B[threadIdx.x]=vecB[idx] ;
+    ds_X[threadIdx.x]=vecX[idx];
+      __syncthreads();    
+    
+    if (idx >= numRows)
+        return;
+  
+    //update the B value for every thread by subtracting off the known x (which was calculating last iteration)
+    //multiplied by the corresponding L element
+for (int j = 0; j < numRows; j++)
+      {
+    if (numRows != 0)
+         {
+             //vecB[idx] = vecB[idx] - matL[(idx*numRows+j)- 1]*vecX[j - 1];
+             ds_B[threadIdx.x] = ds_B[threadIdx.x] - matL[(idx*numRows+j)- 1]*ds_X[j - 1];
+             
+         
+         }
+    
+    if (idx == j)
+         {       
+        	//vecX[j] = vecB[j] / matL[j*numRows+ j];
+          ds_X[j] = ds_B[j] / matL[j*numRows+ j];   
+             
+         }
+      }
+     __syncthreads();  
+   
+    vecX[idx] =ds_X[threadIdx.x];
+}
+
 
 __global__ void gpu_square_solve_kernel_simple(int* matL, int* vecX, int* vecB, int numRows, int i)
 {
@@ -93,14 +128,16 @@ __global__ void gpu_square_solve_kernel_simple(int* matL, int* vecX, int* vecB, 
 
 }
 
+
+
 void gpu_simple_solver(int* matL, int* vecX, int* vecB, int numRows)
 {
 	const unsigned int numThreadsPerBlock = N;
 	//const unsigned int numBlocks = (numRows - 1) / numThreadsPerBlock + 1;
 	const unsigned int numBlocks = 1;
 	// Loop Below Executes 8 Times or for each Row of matL
-	for (int i = 0; i < numRows; i++)
-		gpu_simple_solver_kernel <<<numBlocks, numThreadsPerBlock >>>(matL, vecX, vecB, numRows, i);
+	// for (int i = 0; i < numRows; i++)
+		gpu_simple_solver_Anjum <<<numBlocks, numThreadsPerBlock >>>(matL, vecX, vecB, numRows);
 }
 
 void gpu_complex_solver(int* matL, int* vecX, int* vecB, int numRows)
@@ -131,7 +168,7 @@ void onDevice(int matL_h[][N], int vecB_h[N], int vecX_actual[N])
 	int* vecB_d;
 
 	cudaError_t cuda_ret;
-	printf("Allocating device variables..."); fflush(stdout);
+//	printf("Allocating device variables..."); fflush(stdout);
 		cuda_ret = cudaMalloc((void **)&matL_d, N*N*sizeof(int));
 	if (cuda_ret != cudaSuccess) { std::cout << "Unable to Allocate Memory"; }
 		cuda_ret = cudaMalloc((void **)&vecX_d, N*sizeof(int));
@@ -139,7 +176,7 @@ void onDevice(int matL_h[][N], int vecB_h[N], int vecX_actual[N])
 	cuda_ret = cudaMalloc((void **)&vecB_d, N*sizeof(int));
 	if (cuda_ret != cudaSuccess) { std::cout << "Unable to Allocate Memory"; }
 	
-	printf("Copying data from host to device...,%d", sizeof(matL_h)); fflush(stdout);
+//	printf("Copying data from host to device...,%d", sizeof(matL_h)); fflush(stdout);
 		cuda_ret = cudaMemcpy(matL_d, matL_h, N*N*sizeof(int), cudaMemcpyHostToDevice);
 	if (cuda_ret != cudaSuccess) { std::cout << "Unable to Copy Data in Memory"; }
 	cuda_ret = cudaMemcpy(vecB_d,vecB_h, N*sizeof(int), cudaMemcpyHostToDevice);
@@ -156,14 +193,16 @@ void onDevice(int matL_h[][N], int vecB_h[N], int vecX_actual[N])
     cudaDeviceSynchronize();
 	*/
 	
-	printf("Copying data from Device to Host...\n"); fflush(stdout);
+//	printf("Copying data from Device to Host...\n"); fflush(stdout);
 	cuda_ret = cudaMemcpy(vecX_actual, vecX_d, N*sizeof(int), cudaMemcpyDeviceToHost);
 	
-	for (int i = 0; i < N; i++)
+	
+  for (int i = 0; i < N; i++)
 	{
 		printf("%d ", vecX_actual[i]);
 	}
 	getchar();
+    
 }
 
 int main()
