@@ -4,38 +4,28 @@
 #include <fstream>
 #include <sstream>
 #include <iomanip>
-
 #include "support.h"
 
 
-
-void verifyResults(int(&computed)[N], int(&actual)[N], unsigned int count)
+void verifyResults(int computed[N], int actual[N])
 {
-	// Compare the computed values to the actual ones
-	float tolerance = 1e-3;
-
-	printf("Total Length %d \n", count);
-	for (unsigned int i = 0; i < count; i++)
+	for (int i = 0; i < N; i++)
 	{
-		if (i != 1)
-		{
-			const double diff = (computed[i] - actual[i]) / actual[i];
-			if (diff > tolerance || diff < -tolerance)
+		if (computed[i] != actual[i])
 			{
-				printf("TEST FAILED at index %d, actual = %d, computed = %d"
-					"\n\n", i, actual[i], computed[i]);
-				// exit(0);
+		   printf("TEST FAILED at index %d, actual = %d, computed = %d"
+			   "\n\n", i, actual[i], computed[i]);
+			exit(0);
 			}
-		}
 	}
 	printf("TEST PASSED\n\n");
 }
 
 void printCSV(int(&values)[N][N])
 {
-	for (int i = 0; i<N; i++)
+	for (int i = 0; i<(N); i++)
 	{
-		for (int j = 0; j < N; j++)
+		for (int j = 0; j < (N); j++)
 		{	
 			std::cout << values[i][j] << ',';
 		}
@@ -46,7 +36,7 @@ void printCSV(int(&values)[N][N])
 
 void printCSV(int(&values)[N])
 {
-	for (int i = 0; i<N; i++)
+	for (int i = 0; i<(N); i++)
 	{
 		if (i>0 && i%N == 0) { std::cout << '\n'; }
 		std::cout << values[i] << ',';
@@ -76,7 +66,6 @@ void writeCSV(std::string& filename, int(&vecXh)[N][N], int width, int totsize)
 void loadCSV(const std::string& filename, int values[N][N])
 {
 	std::vector<float> val;
-	std::cout << filename.c_str() << "\n";
 	std::ifstream file(filename.c_str());
 	std::string line;
 	std::string cell;
@@ -94,12 +83,10 @@ void loadCSV(const std::string& filename, int values[N][N])
 		}
 	}
 
-	
-	for (int i = 0; i<N; i++)
-		for (int j = 0; j<N; j++)
-	{
-		values[i][j] = val[i*N+j];
-		//std::cout << values[i][j] << "\n";
+	for (int i = 0; i < (N ); i++)
+
+	{	for (int j = 0; j < (N ); j++)
+		{values[i][j] = val[i*N + j];}
 	}
 
 }
@@ -107,7 +94,7 @@ void loadCSV(const std::string& filename, int values[N][N])
 void loadCSV(const std::string& filename, int(&values)[N])
 {
 	std::vector<float> val;
-	std::cout << filename.c_str() << "\n";
+	
 	std::ifstream file(filename.c_str());
 	std::string line;
 	std::string cell;

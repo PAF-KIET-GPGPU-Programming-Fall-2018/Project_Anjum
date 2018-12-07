@@ -1,6 +1,9 @@
 #include <cuda_runtime.h>
 #include "kernel.h"
+#include "stdio.h"
 
+
+#include <iostream> //for cout
 #define L_Matrix(row,col) matL[((row)*numRows + (col))]
 #define L_Matrix_mat(row,col) matrix[((row)*numRows + (col))]
 #define L_Matrix_t(col,row) matL[((row)*numRows + (col))]
@@ -81,33 +84,86 @@ __global__ void gpu_simple_solver_kernel(int* matL, int* vecX, int* vecB, int nu
 	}
 }
 
+__global__ void gpu_simple_solver_kernel2(int* matL, int* vecX, int* vecB, int numRows, int i)
+{
+	int idx = blockIdx.x*blockDim.x + threadIdx.x;
+	if (idx >= numRows)
+		return;
+	//update the B value for every thread by subtracting off the known x (which was calculating last iteration)
+	//multiplied by the corresponding L element
+	if (i != 0)
+		vecB[idx] = vecB[idx] - matL[(idx*numRows + i) - 1] * vecX[i - 1];
+
+	if (idx == i)
+	{
+		vecX[i] = vecB[i] / matL[i*numRows + i];
+	}
+}
+
 __global__ void gpu_simple_solver_Anjum(int* matL, int* vecX, int* vecB, int numRows)
-{	__shared__ int ds_X[N];
-	__shared__ int ds_matL[N];
+{
 	int rs_B;
 	int idx = blockIdx.x*blockDim.x + threadIdx.x;
-	
+	__shared__ int ds_X[N];
+	__shared__ int ds_matL[N*N];
+
 	if (idx >= numRows)		return;
-	rs_B=vecB[idx];
+	rs_B = vecB[idx];
 	ds_X[threadIdx.x] = vecX[idx];
-	
-	for (int j = 0; j < numRows; j++)
-	{	ds_matL[threadIdx.x]=matL[(idx*numRows + j) ];	}
+
+	for (int i = 0; i < numRows; i++)
+	{
+		ds_matL[idx*numRows + i] = matL[(idx*numRows + i)];
+	}
 	__syncthreads();
 
 	//update the B value for every thread by subtracting off the known x (which was calculating last iteration)
 	//multiplied by the corresponding L element
-	
+
 	for (int j = 0; j < numRows; j++)
 	{if (numRows != 0)
-		{rs_B = rs_B - ds_matL[j - 1] * ds_X[j - 1];	}
-	  if (idx == j)
-		{ds_X[j] = rs_B / ds_matL[j];}
+		{rs_B = rs_B - ds_matL[(idx*numRows + j) - 1] ;	}
+		if (idx == j)
+		{		ds_X[j] = rs_B / ds_matL[j*numRows + j];			}
 	}
 
-	vecX[idx] = ds_X[threadIdx.x];
+vecX[idx] = ds_X[idx];
 }
 
+__global__ void gpu_initial_solver_Anjum(int* matL, int* vecX, int* vecB, int numRows)
+{
+	int rs_B;
+	int col = blockIdx.x*blockDim.x + threadIdx.x;
+	int row= blockIdx.y*blockDim.y + threadIdx.y;
+	__shared__ int ds_X[N];
+	__shared__ int ds_matL[N*N];
+
+	if (col >= numRows || row >= numRows )		return;
+	if (row >= col) 
+ {
+	rs_B = vecB[col];
+	ds_X[col] = vecX[col];
+
+	for (int i = 0; i < numRows; i++)
+	{
+		ds_matL[col*numRows + i] = matL[(col*numRows + i)];
+	}
+	__syncthreads();
+
+	//update the B value for every thread by subtracting off the known x (which was calculating last iteration)
+	//multiplied by the corresponding L element
+
+	for (int j = 0; j < numRows; j++)
+	{if (numRows != 0)
+		{rs_B = rs_B - ds_matL[(col*numRows + j) - 1] ;	}
+		if (col == j)
+		{		ds_X[j] = rs_B / ds_matL[j*numRows + j];			}
+	}
+
+vecX[col] = ds_X[col];
+ }
+ 
+}
 
 __global__ void gpu_square_solve_kernel_simple(int* matL, int* vecX, int* vecB, int numRows, int i)
 {
@@ -127,20 +183,19 @@ __global__ void gpu_square_solve_kernel_simple(int* matL, int* vecX, int* vecB, 
 
 }
 
-
-void gpu_simple_solver(int* matL, int* vecX, int* vecB, int numRows)
+void cpu_Multiply(int matL[N][N],int vecX[N],int vecB[N])
 {
-	const unsigned int numThreadsPerBlock = N;
-	//const unsigned int numBlocks = (numRows - 1) / numThreadsPerBlock + 1;
-	const unsigned int numBlocks = 1;
-	// Loop Below Executes 8 Times or for each Row of matL
-	/*
-	for (int i = 0; i < numRows; i++)
+	for (int i = 0; i < (N-1); i++)
 	{
-		gpu_simple_solver_kernel <<<numBlocks, numThreadsPerBlock >>>(matL, vecX, vecB, numRows, i);
+		vecB[i] = 0;
+		for (int j = 0; j < (N-1); j++)
+		{
+
+			if (matL[i][j] != 0) { vecB[i] = vecB[i] + (matL[i][j] * vecX[j]); }
+
+		}
+		printf("%d \n", vecB[i]);
 	}
-	*/
-	gpu_simple_solver_Anjum <<<numBlocks, numThreadsPerBlock >>>(matL, vecX, vecB, numRows);
 }
 
 void gpu_complex_solver(int* matL, int* vecX, int* vecB, int numRows)
@@ -164,4 +219,44 @@ void gpu_complex_solver(int* matL, int* vecX, int* vecB, int numRows)
 	cudaDeviceSynchronize();
 }
 
+void gpu_simple_solver(int* matL, int* vecX, int* vecB, int numRows,int kernel)
+{
+	const unsigned int numThreadsPerBlock = N;
+	//const unsigned int numBlocks = (numRows - 1) / numThreadsPerBlock + 1;
+	const unsigned int numBlocks = 1;
+	
+if (kernel==1)
+{ printf("\n Executing OLD gpu_simple_solver_kernel \n");
+// Loop Below Executes 8 Times or for each Row of matL
+	for (int i = 0; i < numRows; i++)
+	{
+		gpu_simple_solver_kernel <<<numBlocks, numThreadsPerBlock >>>(matL, vecX, vecB, numRows, i);
+	}
+}
+else if (kernel==2)
+{ 
+	dim3 dimBlock(N,N,1);
+	printf("\n Executing Initial gpu_initial_solver_Anjum \n");
+	gpu_initial_solver_Anjum<<<numBlocks, dimBlock >>>(matL, vecX, vecB, numRows);
+}
+else if (kernel==3) 
+{
+printf("\n Executing gpu_simple_solver_kernel2 \n");
+for (int i = 0; i < numRows; i++)
+	{
+		gpu_simple_solver_kernel2 <<<numBlocks, numThreadsPerBlock >>>(matL, vecX, vecB, numRows, i);
+	}
+}
+else if (kernel==4) 
+{
+printf("\n Executing gpu_simple_solver_Anjum \n");
+gpu_simple_solver_Anjum <<<numBlocks, numThreadsPerBlock >>>(matL, vecX, vecB, numRows);
+}
 
+else { 
+printf("Unknown Kernel"); exit(0); 
+}
+
+
+	
+}
