@@ -8,6 +8,8 @@
 #define L_Matrix_t(col,row) matL[((row)*numRows + (col))]
 #define N 8
 
+
+ 
 __global__ void gpu_square_update_kernel_transposed(int* matL, int* vecX, int* vecB, int numRows)
 {
 	int idx = blockIdx.x*blockDim.x + threadIdx.x;
@@ -72,44 +74,35 @@ __global__ void gpu_simple_solver_kernel(int* matL, int* vecX, int* vecB, int nu
 	}
 }
 
-__global__ void gpu_simple_solver_Anjum (int* matL, int* vecX, int* vecB, int numRows)
+__global__ void gpu_simple_solver_Anjum(int* matL, int* vecX, int* vecB, int numRows)
 {
-    __shared__ int ds_B[N];
-    __shared__ int ds_X[N];
+	int rs_B;
+	int idx = blockIdx.x*blockDim.x + threadIdx.x;
+	__shared__ int ds_X[N];
+	__shared__ int ds_matL[N*N];
 
-    int idx = blockIdx.x*blockDim.x+threadIdx.x;
-    ds_B[threadIdx.x]=vecB[idx] ;
-    ds_X[threadIdx.x]=vecX[idx];
-      __syncthreads();    
-    
-    if (idx >= numRows)
-        return;
-  
-    //update the B value for every thread by subtracting off the known x (which was calculating last iteration)
-    //multiplied by the corresponding L element
-for (int j = 0; j < numRows; j++)
-      {
-    if (numRows != 0)
-         {
-             //vecB[idx] = vecB[idx] - matL[(idx*numRows+j)- 1]*vecX[j - 1];
-             ds_B[threadIdx.x] = ds_B[threadIdx.x] - matL[(idx*numRows+j)- 1]*ds_X[j - 1];
-             
-         
-         }
-    
-    if (idx == j)
-         {       
-        	//vecX[j] = vecB[j] / matL[j*numRows+ j];
-          ds_X[j] = ds_B[j] / matL[j*numRows+ j];   
-             
-         }
-      }
-     __syncthreads();  
-   
-    vecX[idx] =ds_X[threadIdx.x];
+	if (idx >= numRows)		return;
+	rs_B = vecB[idx];
+	ds_X[threadIdx.x] = vecX[idx];
+
+	for (int i = 0; i < numRows; i++)
+	{
+		ds_matL[idx*numRows + i] = matL[(idx*numRows + i)];
+	}
+	__syncthreads();
+
+	//update the B value for every thread by subtracting off the known x (which was calculating last iteration)
+	//multiplied by the corresponding L element
+
+	for (int j = 0; j < numRows; j++)
+	{if (numRows != 0)
+		{rs_B = rs_B - ds_matL[(idx*numRows + j) - 1] ;	}
+		if (idx == j)
+		{		ds_X[j] = rs_B / ds_matL[j*numRows + j];			}
+	}
+
+vecX[idx] = ds_X[idx];
 }
-
-
 __global__ void gpu_square_solve_kernel_simple(int* matL, int* vecX, int* vecB, int numRows, int i)
 {
 	int idx = blockIdx.x*blockDim.x + threadIdx.x;
