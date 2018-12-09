@@ -130,6 +130,36 @@ __global__ void gpu_simple_solver_Anjum(int* matL, int* vecX, int* vecB, int num
 vecX[idx] = ds_X[idx];
 }
 
+
+__global__ void gpu_optimized_solver_Anjum(int* matL, int* vecX, int* vecB, int numRows)
+{	int tot=0;
+    int r_matL=0;
+	__shared__ int ds_X[N];
+ 	int idx = blockIdx.x*blockDim.x + threadIdx.x;
+	if (idx >= numRows)		return;
+  ds_X[idx]=0;
+
+	for (int j = 0; j <numRows ; j++)
+	{r_matL=matL[(j*numRows + idx) ];
+	//__syncthreads();
+      if (j> 0 && j>idx) 
+		{
+		tot= (-1 * (r_matL *ds_X[idx]));
+		
+		//atomicAdd (&ds_B[j],tot); //ds_B[j]+=tot; 	keepler takes time on shared memory for atomics then global memory
+		atomicAdd (&vecB[j],tot); //vecB[idx]+=tot;		// Keepler Performs better on atomics on Global Memory then Shared memory
+		}
+		else if (idx == j)
+		{
+	  ds_X[j] = vecB[j] / r_matL	;	
+		}
+	}
+vecX[idx] = ds_X[idx];
+
+}
+
+
+
 __global__ void gpu_initial_solver_Anjum(int* matL, int* vecX, int* vecB, int numRows)
 {
 	int rs_B;
@@ -183,6 +213,19 @@ __global__ void gpu_square_solve_kernel_simple(int* matL, int* vecX, int* vecB, 
 
 }
 
+void cpu_solver(int matL[N][N], int vecX[N], int vecB[N], int numRows)
+{
+    for (int i = 0; i < numRows; i++)
+    {
+        int val = vecB[i];
+        for (int j = 0; j < i; j++)
+        {
+		  val = val - (matL[i][j]*vecX[j]);
+		}
+        vecX[i] = val / matL[i][i];
+    }
+}
+
 void cpu_Multiply(int matL[N][N],int vecX[N],int vecB[N])
 {
 	for (int i = 0; i < (N-1); i++)
@@ -224,7 +267,7 @@ void gpu_simple_solver(int* matL, int* vecX, int* vecB, int numRows,int kernel)
 	const unsigned int numThreadsPerBlock = N;
 	//const unsigned int numBlocks = (numRows - 1) / numThreadsPerBlock + 1;
 	const unsigned int numBlocks = 1;
-	
+
 if (kernel==1)
 { printf("\n Executing OLD gpu_simple_solver_kernel \n");
 // Loop Below Executes 8 Times or for each Row of matL
@@ -251,8 +294,13 @@ else if (kernel==4)
 {
 printf("\n Executing gpu_simple_solver_Anjum \n");
 gpu_simple_solver_Anjum <<<numBlocks, numThreadsPerBlock >>>(matL, vecX, vecB, numRows);
-}
 
+}
+else if (kernel==5) 
+{
+printf("\n Executing gpu_optimized_solver_Anjum \n");
+gpu_optimized_solver_Anjum <<<numBlocks, numThreadsPerBlock >>>(matL, vecX, vecB, numRows);
+}
 else { 
 printf("Unknown Kernel"); exit(0); 
 }

@@ -8,13 +8,15 @@
 #include <helper_cuda.h>
 #include "support.h"
 #include "kernel.h"
-
-
+#include "dimention.h"
+/*
 #include "support.cu"
 #include "kernel.cu"
 #include "time.cu"
-
-
+*/
+#include <chrono> 
+using namespace std::chrono; 
+using namespace std;
 void onDevice(int matL_h[][N], int vecB_h[N], int vecX_h[N],int vecX_actual[N],int kernel)
 {
 	int* matL_d;
@@ -39,8 +41,29 @@ void onDevice(int matL_h[][N], int vecB_h[N], int vecX_h[N],int vecX_actual[N],i
 	
 	printf("\n \n Starting Calculation on Device \n");
 
+	
+	if (kernel==0)
+{
+ printf("\n Executing cpu_solver \n");
+ auto start = high_resolution_clock::now(); 
+cpu_solver(matL_h, vecB_h,vecX_actual,N);
+auto stop = high_resolution_clock::now();
+auto duration = duration_cast<microseconds>(stop - start); 
+    cout << "Time taken by function: "
+         << duration.count() << " microseconds" << endl; 
+}
+else
+{
+ auto start = high_resolution_clock::now(); 
 	gpu_simple_solver(matL_d, vecX_d, vecB_d, N,kernel);
-	cudaDeviceSynchronize();
+	
+	auto stop = high_resolution_clock::now();
+auto duration = duration_cast<microseconds>(stop - start); 
+    cout << " \n Time taken by function: "
+         << duration.count() << " microseconds" << endl; 
+		 cudaDeviceSynchronize();
+}
+
 	
 
 	
@@ -52,7 +75,7 @@ cudaDeviceSynchronize();
 	
 		for (int i=0;i<N;i++)
 	{
-	printf("%d \n",vecX_h[i]);
+	//printf("%d \n",vecX_h[i]);
 	}
 	
 		verifyResults(vecX_h, vecX_actual);
@@ -116,5 +139,6 @@ else { printf("Unknown Matrix Width"); exit(0); }
 int main(int argc, char* argv[])
 { 	
 int kernel = atoi(argv[1]);
+
 onHost(kernel);
 }
